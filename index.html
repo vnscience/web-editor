@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en" class="h-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Web Editor (HTML/CSS/JS)</title>
+    
+    <!-- Bootstrap 5 CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Google Fonts Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- CodeMirror 5 CSS via cdnjs -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+    
+    <!-- JSZip for exporting ZIP archives -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+
+        .CodeMirror {
+            height: 100% !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            background-color: #282a36 !important;
+        }
+
+        .CodeMirror-gutters {
+            background-color: #21222c !important;
+            border-right: 1px solid #44475a !important;
+        }
+
+        .CodeMirror-linenumber {
+            color: #6272a4 !important;
+        }
+
+        /* Prevent scrollbars on desktop app layout */
+        .app-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header.navbar-custom {
+            height: 55px;
+            background-color: #1e1e1e;
+            border-bottom: 1px solid #333;
+        }
+
+        footer.statusbar {
+            height: 26px;
+            background-color: #007acc;
+            color: #ffffff;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .workspace {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .pane {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+        }
+
+        .pane-header {
+            background-color: #252526;
+            border-bottom: 1px solid #333;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .editor-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tab-content-pane {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-content-pane.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Custom scrollbar & styling tweaks */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4f4f4f;
+        }
+    </style>
+</head>
+<body class="d-flex flex-column h-100">
+
+    <div class="app-container">
+        
+        <!-- Header Toolbar -->
+        <header class="navbar-custom px-3 d-flex align-items-center justify-content-between flex-shrink-0">
+            <div class="d-flex align-items-center gap-2">
+                <div class="bg-primary text-white rounded p-1 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                    <i class="bi bi-code-slash fs-5"></i>
+                </div>
+                <h6 class="m-0 fw-bold text-light tracking-wide">Web Editor <span class="badge bg-secondary fs-6 fw-normal ms-1">v2.0</span></h6>
+            </div>
+
+            <!-- Action Toolbar Buttons -->
+            <div class="d-flex align-items-center gap-2">
+                <button id="runBtn" class="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm" title="Run / Preview (Ctrl + Enter)">
+                    <i class="bi bi-play-fill"></i> Run
+                </button>
+                <button id="refreshBtn" class="btn btn-dark btn-sm border-secondary text-light d-flex align-items-center gap-1" title="Refresh Preview">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button id="clearBtn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" title="Clear active editor">
+                    <i class="bi bi-trash"></i> Clear
+                </button>
+                <div class="vr bg-secondary mx-1"></div>
+                <button id="copyActiveBtn" class="btn btn-outline-light btn-sm d-flex align-items-center gap-1" title="Copy Current Code (Ctrl + Shift + C)">
+                    <i class="bi bi-clipboard"></i> Copy
+                </button>
+                <button id="downloadActiveBtn" class="btn btn-outline-light btn-sm d-flex align-items-center gap-1" title="Download Current File (Ctrl + S)">
+                    <i class="bi bi-download"></i> Download
+                </button>
+                <button id="downloadAllBtn" class="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm" title="Download All as ZIP">
+                    <i class="bi bi-file-earmark-zip"></i> Download All
+                </button>
+            </div>
+        </header>
+
+        <div class="workspace container-fluid p-2 h-100">
+            <div class="row g-2 h-100">
+                
+                <!-- Left Pane: Code Editor with Tabs -->
+                <div class="col-12 col-lg-6 h-100">
+                    <div class="pane rounded shadow-sm">
+                        <!-- Language Tabs Header with Individual Copy/Download Buttons -->
+                        <div class="pane-header d-flex align-items-center justify-content-between py-1 px-2">
+                            <ul class="nav nav-pills nav-sm gap-1" id="editorTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active btn-sm py-1 px-3 text-xs fw-semibold d-flex align-items-center gap-1" id="html-tab" data-bs-toggle="pill" data-bs-target="#html-pane" type="button" role="tab">
+                                        <i class="bi bi-filetype-html text-danger"></i> HTML
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link btn-sm py-1 px-3 text-xs fw-semibold d-flex align-items-center gap-1" id="css-tab" data-bs-toggle="pill" data-bs-target="#css-pane" type="button" role="tab">
+                                        <i class="bi bi-filetype-css text-info"></i> CSS
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link btn-sm py-1 px-3 text-xs fw-semibold d-flex align-items-center gap-1" id="js-tab" data-bs-toggle="pill" data-bs-target="#js-pane" type="button" role="tab">
+                                        <i class="bi bi-filetype-js text-warning"></i> JS
+                                    </button>
+                                </li>
+                            </ul>
+                            <div class="d-flex align-items-center gap-2">
+                                <button class="btn btn-dark btn-sm py-0 px-2 text-xs border-secondary text-light" id="tabCopyBtn" title="Copy active code">
+                                    <i class="bi bi-clipboard"></i> Copy
+                                </button>
+                                <button class="btn btn-dark btn-sm py-0 px-2 text-xs border-secondary text-light" id="tabDownloadBtn" title="Download active file">
+                                    <i class="bi bi-download"></i> Download
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Editor Content Panes -->
+                        <div class="editor-wrapper tab-content">
+                            <!-- HTML Pane -->
+                            <div class="tab-pane fade show active tab-content-pane" id="html-pane" role="tabpanel">
+                                <textarea id="htmlCode">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;title&gt;My Awesome Page&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div class=&quot;card shadow&quot;&gt;
+        &lt;h1&gt;Hello, Modern Web!&lt;/h1&gt;
+        &lt;p&gt;Edit HTML, CSS, or JS to see real-time updates.&lt;/p&gt;
+        &lt;button id=&quot;clickBtn&quot; class=&quot;btn&quot;&gt;Click Me&lt;/button&gt;
+    &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;</textarea>
+                            </div>
+                            <!-- CSS Pane -->
+                            <div class="tab-pane fade tab-content-pane" id="css-pane" role="tabpanel">
+                                <textarea id="cssCode">body {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    color: #f8fafc;
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2.5rem;
+    border-radius: 1rem;
+    text-align: center;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+}
+
+h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.75rem;
+    color: #38bdf8;
+}
+
+p {
+    color: #94a3b8;
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+}
+
+.btn {
+    background-color: #0284c7;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn:hover {
+    background-color: #0369a1;
+    transform: translateY(-1px);
+}</textarea>
+                            </div>
+                            <!-- JS Pane -->
+                            <div class="tab-pane fade tab-content-pane" id="js-pane" role="tabpanel">
+                                <textarea id="jsCode">document.getElementById('clickBtn').addEventListener('click', () => {
+    const heading = document.querySelector('h1');
+    heading.textContent = '✨ Sparkles! Interactive & Working!';
+    heading.style.color = '#f43f5e';
+    console.log('Button clicked successfully!');
+});</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Pane: Preview Render -->
+                <div class="col-12 col-lg-6 h-100">
+                    <div class="pane rounded shadow-sm">
+                        <div class="pane-header d-flex align-items-center justify-content-between py-1 px-3">
+                            <span class="d-flex align-items-center gap-1 text-light">
+                                <i class="bi bi-eye text-success"></i> Live Preview
+                            </span>
+                            <span class="badge bg-dark border border-secondary text-success fw-normal">Sandbox Active</span>
+                        </div>
+                        <div class="editor-wrapper bg-white">
+                            <iframe id="previewFrame" sandbox="allow-scripts" class="w-100 h-100 border-0"></iframe>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <footer class="statusbar px-3 d-flex align-items-center justify-content-between flex-shrink-0">
+            <div class="d-flex align-items-center gap-3">
+                <span id="statusText" class="d-flex align-items-center gap-1"><i class="bi bi-check-circle-fill text-white"></i> Ready</span>
+                <span class="text-white-50">|</span>
+                <span id="cursorPos">Ln 1, Col 1</span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span id="currentLang">HTML</span>
+                <span class="text-white-50">|</span>
+                <span>UTF-8</span>
+            </div>
+        </footer>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let editors = {};
+        let activeTab = 'html';
+        let debounceTimer = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initEditors();
+            setupEventListeners();
+            updatePreview();
+        });
+
+        function initEditors() {
+            const commonConfig = {
+                theme: 'dracula',
+                lineNumbers: true,
+                autoCloseTags: true,
+                autoCloseBrackets: true,
+                tabSize: 4,
+                indentUnit: 4,
+                indentWithTabs: false,
+                lineWrapping: true,
+                extraKeys: {
+                    "Tab": function(cm) {
+                        if (cm.somethingSelected()) {
+                            cm.indentSelection("add");
+                        } else {
+                            cm.replaceSelection("    ", "end");
+                        }
+                    },
+                    "Shift-Tab": function(cm) {
+                        cm.indentSelection("subtract");
+                    }
+                }
+            };
+
+            editors.html = CodeMirror.fromTextArea(document.getElementById('htmlCode'), {
+                ...commonConfig,
+                mode: 'htmlmixed'
+            });
+
+            editors.css = CodeMirror.fromTextArea(document.getElementById('cssCode'), {
+                ...commonConfig,
+                mode: 'css'
+            });
+
+            editors.js = CodeMirror.fromTextArea(document.getElementById('jsCode'), {
+                ...commonConfig,
+                mode: 'javascript'
+            });
+
+            // Listen to changes for debounced preview update and cursor tracking
+            ['html', 'css', 'js'].forEach(lang => {
+                editors[lang].on('change', () => {
+                    triggerDebouncedPreview();
+                    setStatus('Unsaved changes', 'warning');
+                });
+                
+                editors[lang].on('cursorActivity', (cm) => {
+                    if (activeTab === lang) {
+                        const pos = cm.getCursor();
+                        document.getElementById('cursorPos').textContent = `Ln ${pos.line + 1}, Col ${pos.ch + 1}`;
+                    }
+                });
+            });
+
+            // Handle Tab visibility refresh to prevent rendering bugs
+            const tabButtons = document.querySelectorAll('#editorTabs button');
+            tabButtons.forEach(btn => {
+                btn.addEventListener('shown.bs.tab', (event) => {
+                    const targetId = event.target.id;
+                    if (targetId === 'html-tab') switchTab('html');
+                    else if (targetId === 'css-tab') switchTab('css');
+                    else if (targetId === 'js-tab') switchTab('js');
+                });
+            });
+        }
+
+        function switchTab(lang) {
+            activeTab = lang;
+            document.getElementById('currentLang').textContent = lang.toUpperCase();
+            if (editors[lang]) {
+                editors[lang].refresh();
+                const pos = editors[lang].getCursor();
+                document.getElementById('cursorPos').textContent = `Ln ${pos.line + 1}, Col ${pos.ch + 1}`;
+            }
+        }
+
+        function triggerDebouncedPreview() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                updatePreview();
+            }, 400);
+        }
+
+        function updatePreview() {
+            const htmlContent = editors.html.getValue();
+            const cssContent = editors.css.getValue();
+            const jsContent = editors.js.getValue();
+
+            const previewFrame = document.getElementById('previewFrame');
+
+            // Assemble code snippet with safe HTML wrapper injection
+            let fullDocument = '';
+            if (htmlContent.toLowerCase().includes('<!doctype') || htmlContent.toLowerCase().includes('<html>')) {
+                fullDocument = htmlContent;
+                if (cssContent && fullDocument.includes('</head>')) {
+                    fullDocument = fullDocument.replace('</head>', `<style>${cssContent}</style></head>`);
+                } else if (cssContent) {
+                    fullDocument = `<style>${cssContent}</style>` + fullDocument;
+                }
+
+                if (jsContent && fullDocument.includes('</body>')) {
+                    fullDocument = fullDocument.replace('</body>', `<script>${jsContent}<\/script></body>`);
+                } else if (jsContent) {
+                    fullDocument = fullDocument + `<script>${jsContent}<\/script>`;
+                }
+            } else {
+                fullDocument = `
+                    <!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <style>${cssContent}</style>
+                    </head>
+                    <body>
+                        ${htmlContent}
+                        <script>${jsContent}<\/script>
+                    </body>
+                    </html>
+                `;
+            }
+
+            previewFrame.srcdoc = fullDocument;
+            setStatus('Preview updated', 'success');
+        }
+
+        function setupEventListeners() {
+            document.getElementById('runBtn').addEventListener('click', () => {
+                updatePreview();
+            });
+
+            document.getElementById('refreshBtn').addEventListener('click', () => {
+                updatePreview();
+                setStatus('Preview refreshed', 'info');
+            });
+
+            document.getElementById('clearBtn').addEventListener('click', () => {
+                if (window.confirm('Clear active editor content?')) {
+                    editors[activeTab].setValue('');
+                    setStatus('Cleared ' + activeTab.toUpperCase(), 'danger');
+                }
+            });
+
+            document.getElementById('copyActiveBtn').addEventListener('click', () => {
+                copyCode();
+            });
+
+            document.getElementById('downloadActiveBtn').addEventListener('click', () => {
+                downloadCode();
+            });
+
+            document.getElementById('downloadAllBtn').addEventListener('click', () => {
+                downloadAll();
+            });
+
+            document.getElementById('tabCopyBtn').addEventListener('click', () => {
+                copyCode();
+            });
+
+            document.getElementById('tabDownloadBtn').addEventListener('click', () => {
+                downloadCode();
+            });
+
+            // Global Keyboard Shortcuts handler
+            window.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault();
+                    downloadCode();
+                } else if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    updatePreview();
+                } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') {
+                    e.preventDefault();
+                    copyCode();
+                }
+            });
+        }
+
+        function copyCode() {
+            const code = editors[activeTab].getValue();
+            // Fallback copy using textarea to ensure full compatibility
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = code;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            try {
+                document.execCommand('copy');
+                setStatus(`${activeTab.toUpperCase()} copied`, 'success');
+            } catch (err) {
+                setStatus('Copy failed', 'danger');
+            }
+            document.body.removeChild(tempTextArea);
+        }
+
+        function downloadCode() {
+            const code = editors[activeTab].getValue();
+            let filename = 'index.html';
+            if (activeTab === 'css') filename = 'style.css';
+            if (activeTab === 'js') filename = 'script.js';
+
+            const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            setStatus(`${filename} downloaded`, 'success');
+        }
+
+        async function downloadAll() {
+            try {
+                const zip = new JSZip();
+                zip.file("index.html", editors.html.getValue());
+                zip.file("style.css", editors.css.getValue());
+                zip.file("script.js", editors.js.getValue());
+
+                const content = await zip.generateAsync({ type: "blob" });
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "web-project.zip";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                setStatus("web-project.zip downloaded", "success");
+            } catch (err) {
+                console.error(err);
+                setStatus("Failed to generate ZIP", "danger");
+            }
+        }
+
+        function setStatus(message, type = 'success') {
+            const statusText = document.getElementById('statusText');
+            let iconClass = 'bi-check-circle-fill text-white';
+            if (type === 'warning') iconClass = 'bi-exclamation-triangle-fill text-warning';
+            if (type === 'danger') iconClass = 'bi-x-circle-fill text-danger';
+            if (type === 'info') iconClass = 'bi-info-circle-fill text-info';
+
+            statusText.innerHTML = `<i class="bi ${iconClass}"></i> ${message}`;
+            setTimeout(() => {
+                statusText.innerHTML = `<i class="bi bi-check-circle-fill text-white"></i> Ready`;
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
